@@ -594,11 +594,85 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
 }
 
 // ── LAWYERS ───────────────────────────────────────────────────
-function LawyersPage({ lawyers, cases, assignments }) {
+function LawyersPage({ lawyers, setLawyers, cases, assignments }) {
+  const emptyForm = { name:"", phone:"", email:"", specialization:"" };
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+  const [msg, setMsg] = useState("");
+  const set = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }));
+  const showMessage = text => {
+    setMsg(text);
+    setTimeout(() => setMsg(""), 3000);
+  };
+
+  const saveLawyer = async () => {
+    if (!form.name.trim() || !form.email.trim()) return alert("Name and email are required.");
+    try {
+      const response = await fetch(`${API}/lawyers${editingId ? `/${editingId}` : ""}`, {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name, phone_no: form.phone, email: form.email, specialization: form.specialization }),
+      });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to save lawyer.");
+
+      const savedLawyer = { id: editingId || data.lawyer_id, ...form };
+      setLawyers(current => editingId ? current.map(lawyer => lawyer.id === editingId ? savedLawyer : lawyer) : [...current, savedLawyer]);
+      setEditingId(null);
+      setForm(emptyForm);
+      showMessage(editingId ? "Lawyer updated successfully." : "Lawyer registered successfully.");
+    } catch (error) {
+      console.error("Error saving lawyer:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  const startEdit = lawyer => {
+    setEditingId(lawyer.id);
+    setForm({ name: lawyer.name || "", phone: lawyer.phone || "", email: lawyer.email || "", specialization: lawyer.specialization || "" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  const deleteLawyer = async id => {
+    if (!window.confirm("Are you sure you want to delete this lawyer?")) return;
+    try {
+      const response = await fetch(`${API}/lawyers/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to delete lawyer.");
+
+      setLawyers(current => current.filter(lawyer => lawyer.id !== id));
+      if (editingId === id) cancelEdit();
+      showMessage("Lawyer deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting lawyer:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
   const specColor = {"Criminal Law":{bg:C.redLight,color:C.red},"Civil Law":{bg:C.blueLight,color:C.blue},"Family Law":{bg:"#fdf4ff",color:"#7c3aed"},"Corporate Law":{bg:C.amberLight,color:C.amber}};
   return (
-    <div className="card">
+    <div>
+      <div className="card">
+        <div className="section-title">{editingId ? "Edit lawyer" : "Register lawyer"}</div>
+        {msg && <div className="success-message">{msg}</div>}
+        <div className="grid-2">
+          <div><label className="form-label">Full name *</label><input className="form-input" name="name" value={form.name} onChange={set} placeholder="e.g. Priya Sharma" /></div>
+          <div><label className="form-label">Email *</label><input className="form-input" name="email" value={form.email} onChange={set} placeholder="email@example.com" /></div>
+          <div><label className="form-label">Phone</label><input className="form-input" name="phone" value={form.phone} onChange={set} placeholder="10-digit number" /></div>
+          <div><label className="form-label">Specialization</label><input className="form-input" name="specialization" value={form.specialization} onChange={set} placeholder="e.g. Criminal Law" /></div>
+        </div>
+        <button className="primary-button" onClick={saveLawyer}>{editingId ? "Update lawyer" : "+ Register lawyer"}</button>
+        {editingId && <button className="primary-button cancel-button" onClick={cancelEdit}>Cancel</button>}
+      </div>
+
+      <div className="card">
       <div className="section-title">Legal team ({lawyers.length})</div>
+      {lawyers.length === 0 && <Empty text="lawyers" />}
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
         {lawyers.map(l=>{
           const sc = specColor[l.specialization]||{bg:C.grayLight,color:C.gray};
@@ -610,52 +684,108 @@ function LawyersPage({ lawyers, cases, assignments }) {
                 <Avatar name={l.name} size={44}/>
                 <div>
                   <div style={{fontWeight:600,fontSize:15,marginBottom:4}}>{l.name}</div>
-                  <span style={{...sc,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:500}}>{l.specialization}</span>
+                  {l.specialization && <span style={{...sc,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:500}}>{l.specialization}</span>}
                 </div>
               </div>
               <div style={{fontSize:13,color:C.textMuted,lineHeight:1.9}}>
                 <div>{l.email}</div>
-                <div>{l.phone} · {l.experience} experience</div>
+                <div>{l.phone || "Not provided"}</div>
               </div>
               <div style={{marginTop:10,display:"flex",gap:8}}>
                 <span style={{background:C.blueLight,color:C.blue,borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:600}}>{total} total</span>
                 {active>0 && <span style={{background:C.greenLight,color:C.green,borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:600}}>{active} active</span>}
+                <button className="edit-button" onClick={()=>startEdit(l)}>Edit</button>
+                <button className="delete-button" onClick={()=>deleteLawyer(l.id)}>Delete</button>
               </div>
             </div>
           );
         })}
       </div>
     </div>
+    </div>
   );
 }
 
 // ── HEARINGS ──────────────────────────────────────────────────
 function HearingsPage({ hearings, setHearings, cases, clients }) {
-  const empty0 = {caseId:"",date:"",time:"",location:"",judge:"",notes:""};
+  const empty0 = {caseId:"",date:"",time:"",location:""};
   const [form,setForm] = useState(empty0);
   const [msg,setMsg]   = useState("");
+  const [editingId,setEditingId] = useState(null);
   const set = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
 
-  const submit = () => {
-    if (!form.caseId||!form.date||!form.location) return alert("Case, date, and location are required.");
-    setHearings(h=>[...h,{id:Date.now(),...form,caseId:parseInt(form.caseId)}]);
-    setForm(empty0);
-    setMsg("Hearing scheduled."); setTimeout(()=>setMsg(""),3000);
+  const showMessage = text => {
+    setMsg(text);
+    setTimeout(()=>setMsg(""),3000);
   };
 
-  const remove = id => { if(window.confirm("Remove this hearing?")) setHearings(h=>h.filter(x=>x.id!==id)); };
+  const saveHearing = async () => {
+    if (!form.caseId || !form.date || !form.time || !form.location.trim()) {
+      return alert("Case, date, time, and court location are required.");
+    }
 
-  const today = new Date().toISOString().split("T")[0];
+    try {
+      const response = await fetch(`${API}/hearings${editingId ? `/${editingId}` : ""}`, {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: form.date, time: form.time, court_location: form.location, case_id: Number(form.caseId) }),
+      });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to save hearing.");
+
+      const savedHearing = { id: editingId || data.hearing_id, date: form.date, time: form.time, location: form.location, caseId: Number(form.caseId) };
+      setHearings(current => editingId
+        ? current.map(hearing => hearing.id === editingId ? savedHearing : hearing)
+        : [...current, savedHearing]
+      );
+      setEditingId(null);
+      setForm(empty0);
+      showMessage(editingId ? "Hearing updated successfully." : "Hearing scheduled successfully.");
+    } catch (error) {
+      console.error("Error saving hearing:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  const startEdit = hearing => {
+    setEditingId(hearing.id);
+    setForm({ caseId: String(hearing.caseId || ""), date: hearing.date || "", time: hearing.time || "", location: hearing.location || "" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm(empty0);
+  };
+
+  const deleteHearing = async id => {
+    if (!window.confirm("Are you sure you want to delete this hearing?")) return;
+    try {
+      const response = await fetch(`${API}/hearings/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to delete hearing.");
+
+      setHearings(current => current.filter(hearing => hearing.id !== id));
+      if (editingId === id) cancelEdit();
+      showMessage("Hearing deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting hearing:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  const now = new Date();
+  const hearingDateTime = hearing => new Date(`${hearing.date}T${hearing.time || "00:00"}`);
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const getClient = caseId => { const c=cases.find(c=>c.id===caseId); return c?clients.find(cl=>cl.id===c.clientId):null; };
   const getCase   = id => cases.find(c=>c.id===id);
 
-  const sorted   = [...hearings].sort((a,b)=>a.date.localeCompare(b.date));
-  const upcoming = sorted.filter(h=>h.date>=today);
-  const past     = sorted.filter(h=>h.date<today).reverse();
+  const sorted   = [...hearings].sort((a,b)=>hearingDateTime(a)-hearingDateTime(b));
+  const upcoming = sorted.filter(h=>hearingDateTime(h)>=now);
+  const past     = sorted.filter(h=>hearingDateTime(h)<now).reverse();
 
   const HearingCard = ({h}) => {
-    const c=getCase(h.caseId), client=getClient(h.caseId), isPast=h.date<today;
+    const c=getCase(h.caseId), client=getClient(h.caseId), isPast=hearingDateTime(h)<now;
     const parts=h.date.split("-");
     return (
       <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"14px 16px",marginBottom:10,borderLeft:`3px solid ${isPast?C.gray:C.blue}`,opacity:isPast?0.8:1}}>
@@ -668,11 +798,14 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
             <div>
               <div style={{fontWeight:600,fontSize:15,marginBottom:3}}>{client?.name||"Unknown"} — {c?.type||"Case"}</div>
               <div style={{fontSize:13,color:C.textMuted}}>{h.time && `${h.time} · `}{h.location}</div>
-              {h.judge && <div style={{fontSize:13,color:C.textMuted}}>{h.judge}</div>}
-              {h.notes && <div style={{fontSize:13,color:C.text,marginTop:4}}>{h.notes}</div>}
             </div>
           </div>
-          {!isPast && <button className="delete-button" onClick={()=>remove(h.id)}>Remove</button>}
+          {!isPast && (
+            <div className="action-buttons">
+              <button className="edit-button" onClick={()=>startEdit(h)}>Edit</button>
+              <button className="delete-button" onClick={()=>deleteHearing(h.id)}>Delete</button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -681,7 +814,7 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
   return (
     <div>
       <div className="card">
-        <div className="section-title">Schedule a court hearing</div>
+        <div className="section-title">{editingId ? "Edit court hearing" : "Schedule a court hearing"}</div>
         {msg && <div className="success-message">{msg}</div>}
         <div className="grid-2">
           <div>
@@ -695,12 +828,11 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
             </select>
           </div>
           <div><label className="form-label">Date *</label><input className="form-input" type="date" name="date" value={form.date} onChange={set}/></div>
-          <div><label className="form-label">Time</label><input className="form-input" type="time" name="time" value={form.time} onChange={set}/></div>
+          <div><label className="form-label">Time *</label><input className="form-input" type="time" name="time" value={form.time} onChange={set}/></div>
           <div><label className="form-label">Court location *</label><input className="form-input" name="location" value={form.location} onChange={set} placeholder="e.g. Pune District Court, Room 3"/></div>
-          <div><label className="form-label">Presiding judge</label><input className="form-input" name="judge" value={form.judge} onChange={set} placeholder="e.g. Hon. D. Kulkarni"/></div>
-          <div><label className="form-label">Notes</label><input className="form-input" name="notes" value={form.notes} onChange={set} placeholder="e.g. Bring original documents"/></div>
         </div>
-        <button className="primary-button" onClick={submit}>+ Schedule hearing</button>
+        <button className="primary-button" onClick={saveHearing}>{editingId ? "Update hearing" : "+ Schedule hearing"}</button>
+        {editingId && <button className="primary-button cancel-button" onClick={cancelEdit}>Cancel</button>}
       </div>
       <div className="card">
         <div className="section-title">Upcoming hearings ({upcoming.length})</div>
@@ -861,7 +993,7 @@ export default function App() {
         {page==="dashboard" && <Dashboard clients={clients} cases={cases} lawyers={lawyers} hearings={hearings} assignments={assignments} setPage={setPage}/>}
         {page==="clients"   && <ClientsPage clients={clients} setClients={setClients} cases={cases}/>}
         {page==="cases"     && <CasesPage cases={cases} setCases={setCases} clients={clients} lawyers={lawyers} assignments={assignments} setAssignments={setAssignments}/>}
-        {page==="lawyers"   && <LawyersPage lawyers={lawyers} cases={cases} assignments={assignments}/>}
+        {page==="lawyers"   && <LawyersPage lawyers={lawyers} setLawyers={setLawyers} cases={cases} assignments={assignments}/>}
         {page==="hearings"  && <HearingsPage hearings={hearings} setHearings={setHearings} cases={cases} clients={clients}/>}
         {page==="evidence"  && <EvidencePage cases={cases} clients={clients}/>}
       </main>

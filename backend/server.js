@@ -283,6 +283,166 @@ app.listen(PORT, () => {
   console.log(`Backend server running at http://localhost:${PORT}`);
 });
 
+// CREATE HEARING
+app.post("/api/hearings", async (req, res) => {
+  try {
+    const { date, time, court_location, case_id } = req.body;
+    const caseId = Number(case_id);
+
+    if (!date || !time || !court_location?.trim() || !Number.isInteger(caseId) || caseId <= 0) {
+      return res.status(400).json({ success: false, message: "Date, time, court location, and a valid case are required." });
+    }
+
+    const [result] = await db.query(
+      `INSERT INTO COURT_HEARING (date, time, court_location, case_id)
+       VALUES (?, ?, ?, ?)`,
+      [date, time, court_location.trim(), caseId]
+    );
+
+    res.status(201).json({ success: true, message: "Hearing created successfully.", hearing_id: result.insertId });
+  } catch (error) {
+    console.error("Error creating hearing:", error.message);
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return res.status(400).json({ success: false, message: "Selected case does not exist." });
+    }
+    res.status(500).json({ success: false, message: "Failed to create hearing." });
+  }
+});
+
+// UPDATE HEARING
+app.put("/api/hearings/:id", async (req, res) => {
+  try {
+    const hearingId = Number(req.params.id);
+    const { date, time, court_location, case_id } = req.body;
+    const caseId = Number(case_id);
+
+    if (!Number.isInteger(hearingId) || hearingId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid hearing ID." });
+    }
+    if (!date || !time || !court_location?.trim() || !Number.isInteger(caseId) || caseId <= 0) {
+      return res.status(400).json({ success: false, message: "Date, time, court location, and a valid case are required." });
+    }
+
+    const [result] = await db.query(
+      `UPDATE COURT_HEARING
+       SET date = ?, time = ?, court_location = ?, case_id = ?
+       WHERE hearing_id = ?`,
+      [date, time, court_location.trim(), caseId, hearingId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Hearing not found." });
+    }
+
+    res.json({ success: true, message: "Hearing updated successfully." });
+  } catch (error) {
+    console.error("Error updating hearing:", error.message);
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return res.status(400).json({ success: false, message: "Selected case does not exist." });
+    }
+    res.status(500).json({ success: false, message: "Failed to update hearing." });
+  }
+});
+
+// DELETE HEARING
+app.delete("/api/hearings/:id", async (req, res) => {
+  try {
+    const hearingId = Number(req.params.id);
+    if (!Number.isInteger(hearingId) || hearingId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid hearing ID." });
+    }
+
+    const [result] = await db.query("DELETE FROM COURT_HEARING WHERE hearing_id = ?", [hearingId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Hearing not found." });
+    }
+
+    res.json({ success: true, message: "Hearing deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting hearing:", error.message);
+    res.status(500).json({ success: false, message: "Failed to delete hearing." });
+  }
+});
+
+// CREATE LAWYER
+app.post("/api/lawyers", async (req, res) => {
+  try {
+    const { name, phone_no, email, specialization } = req.body;
+
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ success: false, message: "Name and email are required." });
+    }
+
+    const [result] = await db.query(
+      `INSERT INTO LAWYER (name, phone_no, email, specialization)
+       VALUES (?, ?, ?, ?)`,
+      [name.trim(), phone_no?.trim() || null, email.trim(), specialization?.trim() || null]
+    );
+
+    res.status(201).json({ success: true, message: "Lawyer created successfully.", lawyer_id: result.insertId });
+  } catch (error) {
+    console.error("Error creating lawyer:", error.message);
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ success: false, message: "A lawyer with this email already exists." });
+    }
+    res.status(500).json({ success: false, message: "Failed to create lawyer." });
+  }
+});
+
+// UPDATE LAWYER
+app.put("/api/lawyers/:id", async (req, res) => {
+  try {
+    const lawyerId = Number(req.params.id);
+    const { name, phone_no, email, specialization } = req.body;
+
+    if (!Number.isInteger(lawyerId) || lawyerId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid lawyer ID." });
+    }
+    if (!name?.trim() || !email?.trim()) {
+      return res.status(400).json({ success: false, message: "Name and email are required." });
+    }
+
+    const [result] = await db.query(
+      `UPDATE LAWYER
+       SET name = ?, phone_no = ?, email = ?, specialization = ?
+       WHERE lawyer_id = ?`,
+      [name.trim(), phone_no?.trim() || null, email.trim(), specialization?.trim() || null, lawyerId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Lawyer not found." });
+    }
+
+    res.json({ success: true, message: "Lawyer updated successfully." });
+  } catch (error) {
+    console.error("Error updating lawyer:", error.message);
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ success: false, message: "A lawyer with this email already exists." });
+    }
+    res.status(500).json({ success: false, message: "Failed to update lawyer." });
+  }
+});
+
+// DELETE LAWYER
+app.delete("/api/lawyers/:id", async (req, res) => {
+  try {
+    const lawyerId = Number(req.params.id);
+    if (!Number.isInteger(lawyerId) || lawyerId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid lawyer ID." });
+    }
+
+    const [result] = await db.query("DELETE FROM LAWYER WHERE lawyer_id = ?", [lawyerId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Lawyer not found." });
+    }
+
+    res.json({ success: true, message: "Lawyer deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting lawyer:", error.message);
+    res.status(500).json({ success: false, message: "Failed to delete lawyer." });
+  }
+});
+
 // CREATE CASE
 app.post("/api/cases", async (req, res) => {
   try {
