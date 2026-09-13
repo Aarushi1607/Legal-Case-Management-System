@@ -43,7 +43,6 @@ app.get("/api/test-db", async (req, res) => {
 
 
 // ==================== CLIENTS ====================
-
 app.get("/api/clients", async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -64,6 +63,130 @@ app.get("/api/clients", async (req, res) => {
   }
 });
 
+// CREATE CLIENT
+app.post('/api/clients', async (req, res) => {
+    try {
+        const { name, address, email, phone_no } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name and email are required'
+            });
+        }
+
+        const [result] = await db.query(
+            `INSERT INTO CLIENT (name, address, email, phone_no)
+             VALUES (?, ?, ?, ?)`,
+            [name, address || null, email, phone_no || null]
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Client created successfully',
+            client_id: result.insertId
+        });
+
+    } catch (error) {
+        console.error('Error creating client:', error);
+
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({
+                success: false,
+                message: 'A client with this email already exists'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create client'
+        });
+    }
+});
+
+console.log("CLIENT POST ROUTE LOADED");
+
+// UPDATE CLIENT
+app.put('/api/clients/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, address, email, phone_no } = req.body;
+
+        if (!name || !email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name and email are required'
+            });
+        }
+
+        const [result] = await db.query(
+            `UPDATE CLIENT
+             SET name = ?, address = ?, email = ?, phone_no = ?
+             WHERE client_id = ?`,
+            [name, address || null, email, phone_no || null, id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Client not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Client updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Error updating client:', error);
+
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({
+                success: false,
+                message: 'A client with this email already exists'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update client'
+        });
+    }
+});
+
+
+// DELETE CLIENT
+app.delete('/api/clients/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const [result] = await db.query(
+            'DELETE FROM CLIENT WHERE client_id = ?',
+            [id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Client not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Client deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Error deleting client:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete client'
+        });
+    }
+});
 
 // ==================== CASES ====================
 

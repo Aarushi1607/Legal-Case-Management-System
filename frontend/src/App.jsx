@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./App.css";
 
 const API = "http://localhost:5000/api";
 
@@ -95,8 +96,8 @@ function Dashboard({ clients, cases, lawyers, hearings, assignments, setPage }) 
         ))}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        <div style={card}>
-          <div style={secTitle}>Recent cases</div>
+        <div className="card">
+          <div className="section-title">Recent cases</div>
           {[...cases].reverse().slice(0,3).map(c=>{
             const client = getClient(c.clientId);
             const cLawyers = getLawyers(c.id);
@@ -114,8 +115,8 @@ function Dashboard({ clients, cases, lawyers, hearings, assignments, setPage }) 
           })}
           <button style={{...primaryBtn,marginTop:14,width:"100%",textAlign:"center"}} onClick={()=>setPage("cases")}>View all cases</button>
         </div>
-        <div style={card}>
-          <div style={secTitle}>Upcoming hearings</div>
+        <div className="card">
+          <div className="section-title">Upcoming hearings</div>
           {upcoming.length===0 && <Empty text="upcoming hearings"/>}
           {upcoming.map(h=>{
             const c = cases.find(c=>c.id===h.caseId);
@@ -144,47 +145,246 @@ function Dashboard({ clients, cases, lawyers, hearings, assignments, setPage }) 
 
 // ── CLIENTS ───────────────────────────────────────────────────
 function ClientsPage({ clients, setClients, cases }) {
-  const [form,setForm] = useState({name:"",address:"",email:"",phone:""});
-  const [msg,setMsg]   = useState("");
-  const set = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
-  const submit = () => {
-    if (!form.name.trim()||!form.email.trim()) return alert("Name and email are required.");
-    setClients(c=>[...c,{id:Date.now(),...form}]);
-    setForm({name:"",address:"",email:"",phone:""});
-    setMsg("Client registered."); setTimeout(()=>setMsg(""),3000);
+  const emptyForm = { name: "", address: "", email: "", phone: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [msg, setMsg] = useState("");
+  const [editingId, setEditingId] = useState(null);
+
+  const set = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  // CREATE CLIENT
+  const submit = async () => {
+    if (!form.name.trim() || !form.email.trim()) {
+      return alert("Name and email are required.");
+    }
+
+    try {
+      const response = await fetch(`${API}/clients`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          address: form.address,
+          email: form.email,
+          phone_no: form.phone,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return alert(data.message || "Failed to register client.");
+      }
+
+      setClients(c => [
+        ...c,
+        {
+          id: data.client_id,
+          name: form.name,
+          address: form.address,
+          email: form.email,
+          phone: form.phone,
+        },
+      ]);
+
+      setForm(emptyForm);
+      setMsg("Client registered successfully.");
+      setTimeout(() => setMsg(""), 3000);
+    } catch (error) {
+      console.error("Error registering client:", error);
+      alert("Could not connect to the backend.");
+    }
   };
+
+  // UPDATE CLIENT
+  const updateClient = async () => {
+    if (!form.name.trim() || !form.email.trim()) {
+      return alert("Name and email are required.");
+    }
+
+    try {
+      const response = await fetch(`${API}/clients/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          address: form.address,
+          email: form.email,
+          phone_no: form.phone,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return alert(data.message || "Failed to update client.");
+      }
+
+      setClients(current =>
+        current.map(client =>
+          client.id === editingId
+            ? {
+                ...client,
+                name: form.name,
+                address: form.address,
+                email: form.email,
+                phone: form.phone,
+              }
+            : client
+        )
+      );
+
+      setEditingId(null);
+      setForm(emptyForm);
+      setMsg("Client updated successfully.");
+      setTimeout(() => setMsg(""), 3000);
+    } catch (error) {
+      console.error("Error updating client:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  // DELETE CLIENT
+  const deleteClient = async id => {
+    if (!window.confirm("Are you sure you want to delete this client?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API}/clients/${id}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return alert(data.message || "Failed to delete client.");
+      }
+
+      setClients(current => current.filter(client => client.id !== id));
+
+      if (editingId === id) {
+        setEditingId(null);
+        setForm(emptyForm);
+      }
+
+      setMsg("Client deleted successfully.");
+      setTimeout(() => setMsg(""), 3000);
+    } catch (error) {
+      console.error("Error deleting client:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  const startEdit = client => {
+    setEditingId(client.id);
+    setForm({
+      name: client.name || "",
+      address: client.address || "",
+      email: client.email || "",
+      phone: client.phone || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
   return (
     <div>
-      <div style={card}>
-        <div style={secTitle}>Register new client</div>
-        {msg && <div style={successMsg}>{msg}</div>}
-        <div style={grid2}>
-          <div><label style={lbl}>Full name *</label><input style={inp} name="name"    value={form.name}    onChange={set} placeholder="e.g. Priya Singh"/></div>
-          <div><label style={lbl}>Email *</label>    <input style={inp} name="email"   value={form.email}   onChange={set} placeholder="email@example.com"/></div>
-          <div><label style={lbl}>Address</label>    <input style={inp} name="address" value={form.address} onChange={set} placeholder="City, State"/></div>
-          <div><label style={lbl}>Phone</label>      <input style={inp} name="phone"   value={form.phone}   onChange={set} placeholder="10-digit number"/></div>
+      <div className="card">
+        <div className="section-title">
+          {editingId ? "Edit client" : "Register new client"}
         </div>
-        <button style={primaryBtn} onClick={submit}>+ Register client</button>
+
+        {msg && <div className="success-message">{msg}</div>}
+
+        <div className="grid-2">
+          <div>
+            <label className="form-label">Full name *</label>
+            <input className="form-input" name="name" value={form.name} onChange={set} placeholder="e.g. Priya Singh" />
+          </div>
+
+          <div>
+            <label className="form-label">Email *</label>
+            <input className="form-input" name="email" value={form.email} onChange={set} placeholder="email@example.com" />
+          </div>
+
+          <div>
+            <label className="form-label">Address</label>
+            <input className="form-input" name="address" value={form.address} onChange={set} placeholder="City, State" />
+          </div>
+
+          <div>
+            <label className="form-label">Phone</label>
+            <input className="form-input" name="phone" value={form.phone} onChange={set} placeholder="10-digit number" />
+          </div>
+        </div>
+
+        <button className="primary-button" onClick={editingId ? updateClient : submit}>
+          {editingId ? "Update client" : "+ Register client"}
+        </button>
+
+        {editingId && (
+          <button className="primary-button cancel-button" onClick={cancelEdit}>
+            Cancel
+          </button>
+        )}
       </div>
-      <div style={card}>
-        <div style={secTitle}>All clients ({clients.length})</div>
-        {clients.length===0 && <Empty text="clients"/>}
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr><th style={TH}>Client</th><th style={TH}>Email</th><th style={TH}>Phone</th><th style={TH}>Address</th><th style={TH}>Cases</th></tr></thead>
-            <tbody>{clients.map(c=>(
-              <tr key={c.id}>
-                <td style={TD}><div style={{display:"flex",alignItems:"center",gap:10}}><Avatar name={c.name} size={30}/><span style={{fontWeight:500}}>{c.name}</span></div></td>
-                <td style={{...TD,color:C.blue}}>{c.email}</td>
-                <td style={TD}>{c.phone}</td>
-                <td style={TD}>{c.address}</td>
-                <td style={TD}>
-                  <span style={{background:C.blueLight,color:C.blue,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600}}>
-                    {cases.filter(x=>x.clientId===c.id).length} case(s)
-                  </span>
-                </td>
+
+      <div className="card">
+        <div className="section-title">All clients ({clients.length})</div>
+
+        {clients.length === 0 && <Empty text="clients" />}
+
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Address</th>
+                <th>Cases</th>
+                <th>Actions</th>
               </tr>
-            ))}</tbody>
+            </thead>
+
+            <tbody>
+              {clients.map(c => (
+                <tr key={c.id}>
+                  <td>
+                    <div className="client-cell">
+                      <Avatar name={c.name || "?"} size={30} />
+                      <span className="font-medium">{c.name}</span>
+                    </div>
+                  </td>
+
+                  <td className="email-cell">{c.email}</td>
+                  <td>{c.phone || "—"}</td>
+                  <td>{c.address || "—"}</td>
+
+                  <td>
+                    <span className="case-count">
+                      {cases.filter(x => x.clientId === c.id).length} case(s)
+                    </span>
+                  </td>
+
+                  <td>
+                    <div className="action-buttons">
+                      <button className="edit-button" onClick={() => startEdit(c)}>
+                        Edit
+                      </button>
+                      <button className="delete-button" onClick={() => deleteClient(c.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
@@ -229,37 +429,37 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
   return (
     <div>
       {/* File case */}
-      <div style={card}>
-        <div style={secTitle}>File a new case</div>
-        {msg && <div style={successMsg}>{msg}</div>}
-        <div style={grid2}>
+      <div className="card">
+        <div className="section-title">File a new case</div>
+        {msg && <div className="success-message">{msg}</div>}
+        <div className="grid-2">
           <div>
-            <label style={lbl}>Case type</label>
-            <select style={sel} name="type" value={form.type} onChange={set}>
+            <label className="form-label">Case type</label>
+            <select className="form-input" name="type" value={form.type} onChange={set}>
               {["Criminal","Civil","Family","Corporate","Property","Labour"].map(t=><option key={t}>{t}</option>)}
             </select>
           </div>
-          <div><label style={lbl}>Filing date *</label><input style={inp} type="date" name="filingDate" value={form.filingDate} onChange={set}/></div>
+          <div><label className="form-label">Filing date *</label><input className="form-input" type="date" name="filingDate" value={form.filingDate} onChange={set}/></div>
           <div>
-            <label style={lbl}>Client *</label>
-            <select style={sel} name="clientId" value={form.clientId} onChange={set}>
+            <label className="form-label">Client *</label>
+            <select className="form-input" name="clientId" value={form.clientId} onChange={set}>
               <option value="">— Select client —</option>
               {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div><label style={lbl}>Description</label><input style={inp} name="description" value={form.description} onChange={set} placeholder="Brief case summary..."/></div>
+          <div><label className="form-label">Description</label><input className="form-input" name="description" value={form.description} onChange={set} placeholder="Brief case summary..."/></div>
         </div>
-        <button style={primaryBtn} onClick={submit}>+ File case</button>
+        <button className="primary-button" onClick={submit}>+ File case</button>
       </div>
 
       {/* Assign lawyer */}
       <div style={{...card,borderLeft:`4px solid ${C.teal}`,borderRadius:"0 10px 10px 0"}}>
-        <div style={secTitle}>Assign lawyer to a case</div>
-        {aMsg && <div style={successMsg}>{aMsg}</div>}
+        <div className="section-title">Assign lawyer to a case</div>
+        {aMsg && <div className="success-message">{aMsg}</div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:12,alignItems:"flex-end"}}>
           <div>
-            <label style={lbl}>Select case</label>
-            <select style={sel} name="caseId" value={aForm.caseId} onChange={aSet}>
+            <label className="form-label">Select case</label>
+            <select className="form-input" name="caseId" value={aForm.caseId} onChange={aSet}>
               <option value="">— Pick a case —</option>
               {cases.map(c=>{
                 const cl=getClient(c.clientId);
@@ -268,8 +468,8 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
             </select>
           </div>
           <div>
-            <label style={lbl}>Select lawyer</label>
-            <select style={sel} name="lawyerId" value={aForm.lawyerId} onChange={aSet}>
+            <label className="form-label">Select lawyer</label>
+            <select className="form-input" name="lawyerId" value={aForm.lawyerId} onChange={aSet}>
               <option value="">— Pick a lawyer —</option>
               {lawyers.map(l=><option key={l.id} value={l.id}>{l.name} — {l.specialization}</option>)}
             </select>
@@ -279,7 +479,7 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
       </div>
 
       {/* Case list */}
-      <div style={card}>
+      <div className="card">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div style={{...secTitle,marginBottom:0,paddingBottom:0,border:"none"}}>All cases ({cases.length})</div>
           <div style={{display:"flex",gap:6}}>
@@ -330,8 +530,8 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
 function LawyersPage({ lawyers, cases, assignments }) {
   const specColor = {"Criminal Law":{bg:C.redLight,color:C.red},"Civil Law":{bg:C.blueLight,color:C.blue},"Family Law":{bg:"#fdf4ff",color:"#7c3aed"},"Corporate Law":{bg:C.amberLight,color:C.amber}};
   return (
-    <div style={card}>
-      <div style={secTitle}>Legal team ({lawyers.length})</div>
+    <div className="card">
+      <div className="section-title">Legal team ({lawyers.length})</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
         {lawyers.map(l=>{
           const sc = specColor[l.specialization]||{bg:C.grayLight,color:C.gray};
@@ -405,7 +605,7 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
               {h.notes && <div style={{fontSize:13,color:C.text,marginTop:4}}>{h.notes}</div>}
             </div>
           </div>
-          {!isPast && <button style={dangerBtn} onClick={()=>remove(h.id)}>Remove</button>}
+          {!isPast && <button className="delete-button" onClick={()=>remove(h.id)}>Remove</button>}
         </div>
       </div>
     );
@@ -413,13 +613,13 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
 
   return (
     <div>
-      <div style={card}>
-        <div style={secTitle}>Schedule a court hearing</div>
-        {msg && <div style={successMsg}>{msg}</div>}
-        <div style={grid2}>
+      <div className="card">
+        <div className="section-title">Schedule a court hearing</div>
+        {msg && <div className="success-message">{msg}</div>}
+        <div className="grid-2">
           <div>
-            <label style={lbl}>Case *</label>
-            <select style={sel} name="caseId" value={form.caseId} onChange={set}>
+            <label className="form-label">Case *</label>
+            <select className="form-input" name="caseId" value={form.caseId} onChange={set}>
               <option value="">— Select a case —</option>
               {cases.map(c=>{
                 const cl=clients.find(cl=>cl.id===c.clientId);
@@ -427,22 +627,22 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
               })}
             </select>
           </div>
-          <div><label style={lbl}>Date *</label><input style={inp} type="date" name="date" value={form.date} onChange={set}/></div>
-          <div><label style={lbl}>Time</label><input style={inp} type="time" name="time" value={form.time} onChange={set}/></div>
-          <div><label style={lbl}>Court location *</label><input style={inp} name="location" value={form.location} onChange={set} placeholder="e.g. Pune District Court, Room 3"/></div>
-          <div><label style={lbl}>Presiding judge</label><input style={inp} name="judge" value={form.judge} onChange={set} placeholder="e.g. Hon. D. Kulkarni"/></div>
-          <div><label style={lbl}>Notes</label><input style={inp} name="notes" value={form.notes} onChange={set} placeholder="e.g. Bring original documents"/></div>
+          <div><label className="form-label">Date *</label><input className="form-input" type="date" name="date" value={form.date} onChange={set}/></div>
+          <div><label className="form-label">Time</label><input className="form-input" type="time" name="time" value={form.time} onChange={set}/></div>
+          <div><label className="form-label">Court location *</label><input className="form-input" name="location" value={form.location} onChange={set} placeholder="e.g. Pune District Court, Room 3"/></div>
+          <div><label className="form-label">Presiding judge</label><input className="form-input" name="judge" value={form.judge} onChange={set} placeholder="e.g. Hon. D. Kulkarni"/></div>
+          <div><label className="form-label">Notes</label><input className="form-input" name="notes" value={form.notes} onChange={set} placeholder="e.g. Bring original documents"/></div>
         </div>
-        <button style={primaryBtn} onClick={submit}>+ Schedule hearing</button>
+        <button className="primary-button" onClick={submit}>+ Schedule hearing</button>
       </div>
-      <div style={card}>
-        <div style={secTitle}>Upcoming hearings ({upcoming.length})</div>
+      <div className="card">
+        <div className="section-title">Upcoming hearings ({upcoming.length})</div>
         {upcoming.length===0 && <Empty text="upcoming hearings"/>}
         {upcoming.map(h=><HearingCard key={h.id} h={h}/>)}
       </div>
       {past.length>0 && (
-        <div style={card}>
-          <div style={secTitle}>Past hearings ({past.length})</div>
+        <div className="card">
+          <div className="section-title">Past hearings ({past.length})</div>
           {past.map(h=><HearingCard key={h.id} h={h}/>)}
         </div>
       )}
@@ -471,43 +671,43 @@ function EvidencePage({ cases, clients }) {
 
   return (
     <div>
-      <div style={card}>
-        <div style={secTitle}>Log new evidence</div>
-        {msg && <div style={successMsg}>{msg}</div>}
-        <div style={grid2}>
+      <div className="card">
+        <div className="section-title">Log new evidence</div>
+        {msg && <div className="success-message">{msg}</div>}
+        <div className="grid-2">
           <div>
-            <label style={lbl}>Case *</label>
-            <select style={sel} name="caseId" value={form.caseId} onChange={set}>
+            <label className="form-label">Case *</label>
+            <select className="form-input" name="caseId" value={form.caseId} onChange={set}>
               <option value="">— Select case —</option>
               {cases.map(c=>{const cl=clients.find(cl=>cl.id===c.clientId);return <option key={c.id} value={c.id}>#{c.id} · {c.type} · {cl?.name}</option>;})}
             </select>
           </div>
           <div>
-            <label style={lbl}>Type</label>
-            <select style={sel} name="type" value={form.type} onChange={set}>
+            <label className="form-label">Type</label>
+            <select className="form-input" name="type" value={form.type} onChange={set}>
               {["Document","Photo","Video","Physical","Digital"].map(t=><option key={t}>{t}</option>)}
             </select>
           </div>
-          <div><label style={lbl}>Description *</label><input style={inp} name="description" value={form.description} onChange={set} placeholder="Brief description of the evidence"/></div>
-          <div><label style={lbl}>Submitted by</label><input style={inp} name="submittedBy" value={form.submittedBy} onChange={set} placeholder="e.g. Client, Police, Lawyer"/></div>
+          <div><label className="form-label">Description *</label><input className="form-input" name="description" value={form.description} onChange={set} placeholder="Brief description of the evidence"/></div>
+          <div><label className="form-label">Submitted by</label><input className="form-input" name="submittedBy" value={form.submittedBy} onChange={set} placeholder="e.g. Client, Police, Lawyer"/></div>
         </div>
-        <button style={primaryBtn} onClick={submit}>+ Log evidence</button>
+        <button className="primary-button" onClick={submit}>+ Log evidence</button>
       </div>
-      <div style={card}>
-        <div style={secTitle}>Evidence log ({evidence.length} items)</div>
+      <div className="card">
+        <div className="section-title">Evidence log ({evidence.length} items)</div>
         {evidence.length===0 && <Empty text="evidence"/>}
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr><th style={TH}>Type</th><th style={TH}>Client / Case</th><th style={TH}>Description</th><th style={TH}>Submitted by</th><th style={TH}>Date</th></tr></thead>
+            <thead><tr><th >Type</th><th >Client / Case</th><th >Description</th><th >Submitted by</th><th >Date</th></tr></thead>
             <tbody>{evidence.map(e=>{
               const client=getClient(e.caseId), tc=tColor[e.type]||C.gray;
               return (
                 <tr key={e.id}>
-                  <td style={TD}><span style={{background:tc+"18",color:tc,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600}}>{e.type}</span></td>
-                  <td style={TD}><div style={{fontWeight:500}}>{client?.name||"Unknown"}</div><div style={{fontSize:12,color:C.textMuted}}>Case #{e.caseId}</div></td>
-                  <td style={TD}>{e.description}</td>
-                  <td style={TD}>{e.submittedBy||"—"}</td>
-                  <td style={TD}>{e.date}</td>
+                  <td ><span style={{background:tc+"18",color:tc,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600}}>{e.type}</span></td>
+                  <td ><div style={{fontWeight:500}}>{client?.name||"Unknown"}</div><div style={{fontSize:12,color:C.textMuted}}>Case #{e.caseId}</div></td>
+                  <td >{e.description}</td>
+                  <td >{e.submittedBy||"—"}</td>
+                  <td >{e.date}</td>
                 </tr>
               );
             })}</tbody>
