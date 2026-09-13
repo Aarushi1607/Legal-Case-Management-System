@@ -196,7 +196,7 @@ app.get("/api/cases", async (req, res) => {
       SELECT
         case_id AS id,
         case_type AS type,
-        filing_date AS filingDate,
+        DATE_FORMAT(filing_date, '%Y-%m-%d') AS filingDate,
         status,
         client_id AS clientId
       FROM CASE_DETAILS
@@ -281,4 +281,89 @@ app.get("/api/hearings", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend server running at http://localhost:${PORT}`);
+});
+
+// CREATE CASE
+app.post("/api/cases", async (req, res) => {
+  try {
+    const { case_type, filing_date, status, client_id } = req.body;
+    const clientId = Number(client_id);
+
+    if (!case_type?.trim() || !filing_date || !status?.trim() || !Number.isInteger(clientId) || clientId <= 0) {
+      return res.status(400).json({ success: false, message: "Case type, filing date, status, and a valid client are required." });
+    }
+
+    const [result] = await db.query(
+      `INSERT INTO CASE_DETAILS (case_type, filing_date, status, client_id)
+       VALUES (?, ?, ?, ?)`,
+      [case_type.trim(), filing_date, status.trim(), clientId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Case created successfully.",
+      case_id: result.insertId
+    });
+  } catch (error) {
+    console.error("Error creating case:", error.message);
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return res.status(400).json({ success: false, message: "Selected client does not exist." });
+    }
+    res.status(500).json({ success: false, message: "Failed to create case." });
+  }
+});
+
+// UPDATE CASE
+app.put("/api/cases/:id", async (req, res) => {
+  try {
+    const caseId = Number(req.params.id);
+    const { case_type, filing_date, status, client_id } = req.body;
+    const clientId = Number(client_id);
+
+    if (!Number.isInteger(caseId) || caseId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid case ID." });
+    }
+    if (!case_type?.trim() || !filing_date || !status?.trim() || !Number.isInteger(clientId) || clientId <= 0) {
+      return res.status(400).json({ success: false, message: "Case type, filing date, status, and a valid client are required." });
+    }
+
+    const [result] = await db.query(
+      `UPDATE CASE_DETAILS
+       SET case_type = ?, filing_date = ?, status = ?, client_id = ?
+       WHERE case_id = ?`,
+      [case_type.trim(), filing_date, status.trim(), clientId, caseId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Case not found." });
+    }
+
+    res.json({ success: true, message: "Case updated successfully." });
+  } catch (error) {
+    console.error("Error updating case:", error.message);
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return res.status(400).json({ success: false, message: "Selected client does not exist." });
+    }
+    res.status(500).json({ success: false, message: "Failed to update case." });
+  }
+});
+
+// DELETE CASE
+app.delete("/api/cases/:id", async (req, res) => {
+  try {
+    const caseId = Number(req.params.id);
+    if (!Number.isInteger(caseId) || caseId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid case ID." });
+    }
+
+    const [result] = await db.query("DELETE FROM CASE_DETAILS WHERE case_id = ?", [caseId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Case not found." });
+    }
+
+    res.json({ success: true, message: "Case deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting case:", error.message);
+    res.status(500).json({ success: false, message: "Failed to delete case." });
+  }
 });

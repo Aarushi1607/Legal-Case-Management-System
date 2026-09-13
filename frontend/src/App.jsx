@@ -394,8 +394,10 @@ function ClientsPage({ clients, setClients, cases }) {
 
 // ── CASES + LAWYER ASSIGNMENT ─────────────────────────────────
 function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignments }) {
-  const [form,setForm]   = useState({type:"Criminal",filingDate:"",clientId:"",description:""});
+  const emptyForm = { type:"Criminal", filingDate:"", status:"Open", clientId:"" };
+  const [form,setForm]   = useState(emptyForm);
   const [msg,setMsg]     = useState("");
+  const [editingId,setEditingId] = useState(null);
   const [aForm,setAForm] = useState({caseId:"",lawyerId:""});
   const [aMsg,setAMsg]   = useState("");
   const [filter,setFilter] = useState("All");
@@ -403,11 +405,73 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
   const set  = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
   const aSet = e => setAForm(f=>({...f,[e.target.name]:e.target.value}));
 
-  const submit = () => {
-    if (!form.filingDate||!form.clientId) return alert("Filing date and client required.");
-    setCases(c=>[...c,{id:Date.now(),type:form.type,filingDate:form.filingDate,status:"Open",clientId:parseInt(form.clientId),description:form.description}]);
-    setForm({type:"Criminal",filingDate:"",clientId:"",description:""});
-    setMsg("Case filed."); setTimeout(()=>setMsg(""),3000);
+  const showMessage = text => {
+    setMsg(text);
+    setTimeout(()=>setMsg(""),3000);
+  };
+
+  const saveCase = async () => {
+    if (!form.type.trim() || !form.filingDate || !form.status || !form.clientId) {
+      return alert("Case type, filing date, status, and client are required.");
+    }
+
+    const payload = {
+      case_type: form.type,
+      filing_date: form.filingDate,
+      status: form.status,
+      client_id: Number(form.clientId),
+    };
+
+    try {
+      const response = await fetch(`${API}/cases${editingId ? `/${editingId}` : ""}`, {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) return alert(data.message || "Failed to save case.");
+
+      const savedCase = { id: editingId || data.case_id, type: form.type, filingDate: form.filingDate, status: form.status, clientId: Number(form.clientId) };
+      setCases(current => editingId
+        ? current.map(item => item.id === editingId ? savedCase : item)
+        : [...current, savedCase]
+      );
+      setEditingId(null);
+      setForm(emptyForm);
+      showMessage(editingId ? "Case updated successfully." : "Case filed successfully.");
+    } catch (error) {
+      console.error("Error saving case:", error);
+      alert("Could not connect to the backend.");
+    }
+  };
+
+  const startEdit = caseItem => {
+    setEditingId(caseItem.id);
+    setForm({ type: caseItem.type || "", filingDate: caseItem.filingDate || "", status: caseItem.status || "Open", clientId: String(caseItem.clientId || "") });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  const deleteCase = async id => {
+    if (!window.confirm("Are you sure you want to delete this case?")) return;
+
+    try {
+      const response = await fetch(`${API}/cases/${id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to delete case.");
+
+      setCases(current => current.filter(item => item.id !== id));
+      if (editingId === id) cancelEdit();
+      showMessage("Case deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting case:", error);
+      alert("Could not connect to the backend.");
+    }
   };
 
   const doAssign = () => {
@@ -421,7 +485,6 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
   const unassign = (caseId,lawyerId) =>
     setAssignments(a=>a.filter(x=>!(x.caseId===caseId&&x.lawyerId===lawyerId)));
 
-  const updateStatus = (id,status) => setCases(c=>c.map(x=>x.id===id?{...x,status}:x));
   const getClient    = id => clients.find(c=>c.id===id);
   const getLawyers   = caseId => assignments.filter(a=>a.caseId===caseId).map(a=>lawyers.find(l=>l.id===a.lawyerId)).filter(Boolean);
   const filtered     = filter==="All" ? cases : cases.filter(c=>c.status===filter);
@@ -430,16 +493,22 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
     <div>
       {/* File case */}
       <div className="card">
-        <div className="section-title">File a new case</div>
+        <div className="section-title">{editingId ? "Edit case" : "File a new case"}</div>
         {msg && <div className="success-message">{msg}</div>}
         <div className="grid-2">
           <div>
-            <label className="form-label">Case type</label>
+            <label className="form-label">Case type *</label>
             <select className="form-input" name="type" value={form.type} onChange={set}>
               {["Criminal","Civil","Family","Corporate","Property","Labour"].map(t=><option key={t}>{t}</option>)}
             </select>
           </div>
           <div><label className="form-label">Filing date *</label><input className="form-input" type="date" name="filingDate" value={form.filingDate} onChange={set}/></div>
+          <div>
+            <label className="form-label">Status *</label>
+            <select className="form-input" name="status" value={form.status} onChange={set}>
+              {["Open","Pending","Closed"].map(status=><option key={status}>{status}</option>)}
+            </select>
+          </div>
           <div>
             <label className="form-label">Client *</label>
             <select className="form-input" name="clientId" value={form.clientId} onChange={set}>
@@ -447,9 +516,9 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
               {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div><label className="form-label">Description</label><input className="form-input" name="description" value={form.description} onChange={set} placeholder="Brief case summary..."/></div>
         </div>
-        <button className="primary-button" onClick={submit}>+ File case</button>
+        <button className="primary-button" onClick={saveCase}>{editingId ? "Update case" : "+ File case"}</button>
+        {editingId && <button className="primary-button cancel-button" onClick={cancelEdit}>Cancel</button>}
       </div>
 
       {/* Assign lawyer */}
@@ -502,7 +571,6 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
                   <Badge status={c.status}/>
                 </div>
                 <div style={{fontSize:13,color:C.textMuted,marginBottom:6}}>{c.type} · Filed {c.filingDate}</div>
-                {c.description && <div style={{fontSize:13,color:C.text,marginBottom:8}}>{c.description}</div>}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {cLawyers.map(l=>(
                     <span key={l.id} style={{background:C.tealLight,color:C.teal,border:`1px solid #99f6e4`,borderRadius:20,padding:"2px 10px 2px 12px",fontSize:12,fontWeight:500,display:"inline-flex",alignItems:"center",gap:6}}>
@@ -514,9 +582,8 @@ function CasesPage({ cases, setCases, clients, lawyers, assignments, setAssignme
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-                {c.status!=="Closed"  && <button style={{...dangerBtn}} onClick={()=>updateStatus(c.id,"Closed")}>Close</button>}
-                {c.status==="Open"    && <button style={{...dangerBtn,background:C.amber}} onClick={()=>updateStatus(c.id,"Pending")}>Pending</button>}
-                {c.status==="Closed"  && <button style={{...dangerBtn,background:C.green}} onClick={()=>updateStatus(c.id,"Open")}>Reopen</button>}
+                <button className="edit-button" onClick={()=>startEdit(c)}>Edit</button>
+                <button className="delete-button" onClick={()=>deleteCase(c.id)}>Delete</button>
               </div>
             </div>
           );
