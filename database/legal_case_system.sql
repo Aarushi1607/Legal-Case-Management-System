@@ -108,6 +108,7 @@ CREATE TABLE EVIDENCE (
     evidence_id INT PRIMARY KEY AUTO_INCREMENT,
     type VARCHAR(50),
     description TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     case_id INT,
     FOREIGN KEY (case_id)
         REFERENCES CASE_DETAILS(case_id)
@@ -530,4 +531,3 @@ SELECT count_cases_for_client(1)
 AS total_cases_for_client1;
 
 SELECT * FROM AUDIT_LOG;
-
