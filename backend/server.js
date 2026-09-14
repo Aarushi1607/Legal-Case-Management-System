@@ -276,6 +276,57 @@ app.get("/api/hearings", async (req, res) => {
   }
 });
 
+// ==================== EVIDENCE ====================
+
+app.get("/api/evidence", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        evidence_id AS id,
+        type,
+        description,
+        case_id AS caseId,
+        DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS createdAt
+      FROM EVIDENCE
+      ORDER BY evidence_id DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error("Evidence error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/evidence", async (req, res) => {
+  try {
+    const { type, description, case_id } = req.body;
+    const caseId = Number(case_id);
+
+    if (!type?.trim() || !description?.trim() || !Number.isInteger(caseId) || caseId <= 0) {
+      return res.status(400).json({ success: false, message: "Type, description, and a valid case are required." });
+    }
+
+    const [result] = await db.query(
+      "INSERT INTO EVIDENCE (type, description, case_id) VALUES (?, ?, ?)",
+      [type.trim(), description.trim(), caseId]
+    );
+    const [rows] = await db.query(
+      `SELECT evidence_id AS id, type, description, case_id AS caseId,
+       DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS createdAt
+       FROM EVIDENCE WHERE evidence_id = ?`,
+      [result.insertId]
+    );
+
+    res.status(201).json({ success: true, message: "Evidence logged successfully.", evidence: rows[0] });
+  } catch (error) {
+    console.error("Error creating evidence:", error.message);
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return res.status(400).json({ success: false, message: "Selected case does not exist." });
+    }
+    res.status(500).json({ success: false, message: "Failed to log evidence." });
+  }
+});
+
 
 // ==================== START SERVER ====================
 

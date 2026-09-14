@@ -851,22 +851,51 @@ function HearingsPage({ hearings, setHearings, cases, clients }) {
 
 // ── EVIDENCE ──────────────────────────────────────────────────
 function EvidencePage({ cases, clients }) {
-  const empty0 = {caseId:"",type:"Document",description:"",submittedBy:""};
+  const empty0 = {caseId:"",type:"Document",description:""};
   const [form,setForm]       = useState(empty0);
-  const [evidence,setEvidence] = useState([
-    {id:1,caseId:1,type:"Document",description:"FIR copy filed at Pune station",submittedBy:"Police", date:"2026-01-12"},
-    {id:2,caseId:1,type:"Photo",   description:"Accident scene photographs",    submittedBy:"Client", date:"2026-01-14"},
-    {id:3,caseId:2,type:"Document",description:"Property agreement papers",      submittedBy:"Lawyer", date:"2026-02-18"},
-  ]);
+  const [evidence,setEvidence] = useState([]);
   const [msg,setMsg] = useState("");
+  const [search,setSearch] = useState("");
+  const [typeFilter,setTypeFilter] = useState("All");
+  const [caseFilter,setCaseFilter] = useState("");
   const set = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
-  const submit = () => {
-    if (!form.caseId||!form.description) return alert("Case and description required.");
-    setEvidence(e=>[...e,{id:Date.now(),...form,caseId:parseInt(form.caseId),date:new Date().toISOString().split("T")[0]}]);
-    setForm(empty0); setMsg("Evidence logged."); setTimeout(()=>setMsg(""),3000);
+
+  useEffect(() => {
+    fetch(`${API}/evidence`)
+      .then(response => response.json())
+      .then(setEvidence)
+      .catch(error => console.error("Error loading evidence:", error));
+  }, []);
+
+  const submit = async () => {
+    if (!form.caseId || !form.type || !form.description.trim()) return alert("Case, type, and description are required.");
+    try {
+      const response = await fetch(`${API}/evidence`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ type:form.type, description:form.description, case_id:Number(form.caseId) }),
+      });
+      const data = await response.json();
+      if (!response.ok) return alert(data.message || "Failed to log evidence.");
+
+      setEvidence(current => [data.evidence, ...current]);
+      setForm(empty0);
+      setMsg("Evidence logged successfully.");
+      setTimeout(()=>setMsg(""),3000);
+    } catch (error) {
+      console.error("Error logging evidence:", error);
+      alert("Could not connect to the backend.");
+    }
   };
   const getClient = caseId => { const c=cases.find(c=>c.id===caseId); return c?clients.find(cl=>cl.id===c.clientId):null; };
   const tColor    = {Document:C.blue,Photo:C.teal,Video:C.red,Physical:C.amber,Digital:"#7c3aed"};
+  const filteredEvidence = evidence.filter(item => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || item.type.toLowerCase().includes(query) || item.description.toLowerCase().includes(query);
+    const matchesType = typeFilter === "All" || (typeFilter === "Documents" && item.type === "Document") || (typeFilter === "Photos" && item.type === "Photo") || (typeFilter === "Videos" && item.type === "Video") || (typeFilter === "Other" && !["Document", "Photo", "Video"].includes(item.type));
+    const matchesCase = !caseFilter || item.caseId === Number(caseFilter);
+    return matchesSearch && matchesType && matchesCase;
+  });
 
   return (
     <div>
@@ -888,25 +917,29 @@ function EvidencePage({ cases, clients }) {
             </select>
           </div>
           <div><label className="form-label">Description *</label><input className="form-input" name="description" value={form.description} onChange={set} placeholder="Brief description of the evidence"/></div>
-          <div><label className="form-label">Submitted by</label><input className="form-input" name="submittedBy" value={form.submittedBy} onChange={set} placeholder="e.g. Client, Police, Lawyer"/></div>
         </div>
         <button className="primary-button" onClick={submit}>+ Log evidence</button>
       </div>
       <div className="card">
-        <div className="section-title">Evidence log ({evidence.length} items)</div>
-        {evidence.length===0 && <Empty text="evidence"/>}
+        <div className="section-title">Evidence log ({filteredEvidence.length} items)</div>
+        <div className="grid-2">
+          <div><label className="form-label">Search evidence</label><input className="form-input" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search description or type"/></div>
+          <div><label className="form-label">Evidence type</label><select className="form-input" value={typeFilter} onChange={event=>setTypeFilter(event.target.value)}>{["All","Documents","Photos","Videos","Other"].map(type=><option key={type}>{type}</option>)}</select></div>
+          <div><label className="form-label">Case</label><select className="form-input" value={caseFilter} onChange={event=>setCaseFilter(event.target.value)}><option value="">All cases</option>{cases.map(c=><option key={c.id} value={c.id}>Case #{c.id} · {c.type}</option>)}</select></div>
+        </div>
+        {filteredEvidence.length===0 && <Empty text="matching evidence"/>}
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr><th >Type</th><th >Client / Case</th><th >Description</th><th >Submitted by</th><th >Date</th></tr></thead>
-            <tbody>{evidence.map(e=>{
+            <thead><tr><th >Reference</th><th >Type</th><th >Client / Case</th><th >Description</th><th >Added</th></tr></thead>
+            <tbody>{filteredEvidence.map(e=>{
               const client=getClient(e.caseId), tc=tColor[e.type]||C.gray;
               return (
                 <tr key={e.id}>
+                  <td ><span style={{fontWeight:600,color:C.navy}}>EVD-{String(e.id).padStart(3,"0")}</span></td>
                   <td ><span style={{background:tc+"18",color:tc,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600}}>{e.type}</span></td>
                   <td ><div style={{fontWeight:500}}>{client?.name||"Unknown"}</div><div style={{fontSize:12,color:C.textMuted}}>Case #{e.caseId}</div></td>
                   <td >{e.description}</td>
-                  <td >{e.submittedBy||"—"}</td>
-                  <td >{e.date}</td>
+                  <td >{e.createdAt ? `Added: ${new Date(e.createdAt).toLocaleString("en-IN", { day:"numeric", month:"long", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true })}` : "Added timestamp unavailable"}</td>
                 </tr>
               );
             })}</tbody>
